@@ -46,7 +46,8 @@ way to notice, and it should show exactly the collections this vault declares.
 Always pass a path and `--name`. Bare `qmd collection add` registers the current
 directory with no confirmation.
 
-Point a working repo at its vault via `.mcp.json`:
+Point a working repo at its vault with an MCP server. In Claude Code, `.mcp.json` at the
+repo root:
 
 ```json
 {
@@ -56,9 +57,22 @@ Point a working repo at its vault via `.mcp.json`:
 }
 ```
 
-and add one line to that repo's `CLAUDE.md` telling agents to search the vault before
-investigating from scratch. The MCP server supplies the tool; the line supplies the
-intent. Neither works alone.
+Codex does not read a repo's `.mcp.json`, and its MCP config has no `cwd` field. Since
+`qmd mcp` takes the vault from the working directory, wrap the command in a shell that
+changes into it — in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.kb]
+command = "sh"
+args = ["-c", "cd /path/to/vault && exec qmd mcp"]
+```
+
+or `codex mcp add kb -- sh -c "cd /path/to/vault && exec qmd mcp"`. Codex config is
+global, so name the server per vault if you use more than one.
+
+Then add one line to that repo's `CLAUDE.md` / `AGENTS.md` telling agents to search the
+vault before investigating from scratch. The MCP server supplies the tool; the line
+supplies the intent. Neither works alone.
 
 When filtering a search, note that the MCP `query` tool takes **`collections`** — plural,
 an array. MCP drops unknown parameters silently, so a singular `collection` disappears

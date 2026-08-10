@@ -13,8 +13,10 @@ code. The vault exists because that rediscovery is expensive and its results eva
 The working repo declares its vault. Look, in order:
 
 1. A `kb` MCP server in `.mcp.json` — its `cwd` is the vault
-2. A vault line in the repo's `CLAUDE.md` / `AGENTS.md`
-3. `.kb.yaml` in the current tree (you are already inside a vault)
+2. A `kb` MCP server in `~/.codex/config.toml` — Codex has no `cwd` field, so the vault
+   is the directory its command changes into
+3. A vault line in the repo's `CLAUDE.md` / `AGENTS.md`
+4. `.kb.yaml` in the current tree (you are already inside a vault)
 
 If no vault is declared, say so and answer from the code as usual. Do not guess a vault
 path — reading the wrong vault is worse than reading none, because its answers look
