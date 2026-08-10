@@ -209,6 +209,23 @@ Topic files under `memory/` are **not** loaded at session start. Read them on de
 
 Check the budget after editing: `wc -l MEMORY.md` (under 200), `wc -c MEMORY.md` (under 25600).
 
+## Isolation between vaults
+
+Vaults are separate repositories with separate search indexes, so a question in one
+cannot pull an answer from another. That guarantee rests on one setup step: **run
+`qmd init` in the vault root before registering any collection.**
+
+qmd's configuration is global by default (`~/.config/qmd/index.yml`, index under
+`~/.cache/qmd/`). A vault-local `.qmd/` overrides it, but only once it exists. Register
+a collection first and it goes into the global config, where the vault will also see
+every other vault's collections — silently, with no error. Verify with
+`qmd collection list` from inside the vault: it should list exactly what this vault
+declares and nothing else.
+
+Point a working repo at a vault by giving the MCP server that vault as its `cwd`. One
+server per vault: the server can only reach the index it was started in, so a wrong
+collection name cannot leak another vault's contents.
+
 ## Source lifecycle
 
 - `live` is a current query against a ticket system, chat, docs, jobs, tables, or

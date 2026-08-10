@@ -28,11 +28,20 @@ sources: raw
 collection: wiki
 ```
 
-Register the search index once per vault:
+Register the search index once per vault, **in this order**:
 
 ```bash
-qmd collection add ./wiki --name wiki && qmd update && qmd embed
+qmd init                                   # create the vault-local .qmd/ index
+qmd collection add ./wiki --name wiki
+qmd update && qmd embed
 ```
+
+`qmd init` first is what makes the isolation real. qmd's config is global by default
+(`~/.config/qmd/index.yml`, index in `~/.cache/qmd/`), and a vault-local `.qmd/` takes
+precedence only once it exists. Register a collection before running `qmd init` and it
+lands in the global config, where this vault will also see every other vault's
+collections. Nothing errors — `qmd collection list` from inside the vault is the only
+way to notice, and it should show exactly the collections this vault declares.
 
 Always pass a path and `--name`. Bare `qmd collection add` registers the current
 directory with no confirmation.
