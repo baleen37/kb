@@ -17,5 +17,10 @@
     "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",
     "semantic-release": "^24.2.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "@tobilu/qmd": "2.5.3",
+    "zod": "4.2.1"
   }
 }
