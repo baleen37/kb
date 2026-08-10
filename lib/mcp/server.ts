@@ -8,6 +8,7 @@
  * the only one reachable.
  */
 
+import { createWriteStream } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { IndexStatus } from "@tobilu/qmd";
@@ -129,5 +130,20 @@ if (import.meta.main) {
   }
 
   const server = await createMcpServer(prepared);
-  await server.connect(new StdioServerTransport());
+
+  // Our own handle on fd 1, rather than process.stdout.
+  //
+  // qmd swaps process.stdout.write for one that writes to stderr whenever it
+  // initializes llama — on import, and again on every model load (its llm.ts,
+  // withNativeStdoutRedirectedToStderr). It does that so native library noise
+  // cannot corrupt a JSON stream, which is reasonable; the trouble is we speak
+  // JSON-RPC over the same stdout, so replies emitted during the swap went to
+  // stderr and clients hung forever.
+  //
+  // The transport captures whatever stream it is given at construction, so a
+  // separate handle on the same descriptor sidesteps the swap entirely. Pinning
+  // process.stdout.write instead would make qmd's own reassignment throw and
+  // break search — this leaves qmd free to do as it likes.
+  const stdout = createWriteStream("", { fd: 1 });
+  await server.connect(new StdioServerTransport(process.stdin, stdout));
 }

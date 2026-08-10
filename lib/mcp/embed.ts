@@ -4,11 +4,14 @@
  *
  *   bun lib/mcp/embed.ts <vault root>
  *
- * This exists because qmd redirects `process.stdout.write` to stderr while
- * llama initializes (its llm.ts, withNativeStdoutRedirectedToStderr) to keep
- * native library noise out of stdout. The MCP server speaks JSON-RPC over that
- * same stdout, so embedding in-process silently diverts responses to stderr and
- * the client waits forever. Running it here keeps the hijack off the server.
+ * Embedding pins CPU and GPU for seconds at a time. Off the server process, a
+ * tool call arriving mid-embed is answered promptly instead of queueing behind
+ * the model.
+ *
+ * It also used to be a correctness fix: qmd swaps `process.stdout.write` for one
+ * writing to stderr while llama initializes, which corrupted the JSON-RPC stream.
+ * The server now holds its own handle on fd 1 (see server.ts), so that no longer
+ * depends on this — the reason to keep it is responsiveness.
  */
 
 import { openStore } from "./store.ts";

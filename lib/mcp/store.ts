@@ -73,10 +73,8 @@ function embedElsewhere(root: string): Promise<void> {
  * Open a vault's store and bring it to a searchable state.
  *
  * Indexing happens here — it is milliseconds. Embedding happens in a child
- * process, because qmd redirects `process.stdout.write` to stderr while llama
- * initializes (llm.ts, withNativeStdoutRedirectedToStderr). The MCP server
- * speaks JSON-RPC over that same stdout, so embedding in-process silently
- * diverts responses and the client hangs. See lib/mcp/embed.ts.
+ * process, where it cannot pin this process's CPU and GPU for seconds while
+ * tool calls wait. See lib/mcp/embed.ts.
  *
  * Recovery runs in the background either way; tool handlers await `ready`.
  * A failure does not kill the server — lex search still works without vectors,

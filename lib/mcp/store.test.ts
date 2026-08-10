@@ -144,9 +144,9 @@ test("a failed embed leaves the server usable", async () => {
 test("the embedder runs outside this process", async () => {
   const v = makeVault({ docs: { "d.md": "# Delta\n\nbilby" } });
   try {
-    // qmd swaps process.stdout.write for one that writes to stderr while llama
-    // initializes. The server speaks JSON-RPC over stdout, so that swap must
-    // never happen here — it is why embedding was moved to a child process.
+    // Recovery must not load a model here — that is what the child process is
+    // for. qmd swaps process.stdout.write while llama initializes, so an
+    // untouched write is evidence the work happened elsewhere.
     const before = process.stdout.write;
     const p = await prepareStore(v.root);
     await p.ready;
