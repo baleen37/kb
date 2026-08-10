@@ -4,6 +4,9 @@
  *
  *   bun lib/mcp/embed.ts <vault root>
  *
+ * Embeds what the index says needs embedding; it does not index. Run it after
+ * something else has indexed — `prepareStore` does, just before spawning this.
+ *
  * Embedding pins CPU and GPU for seconds at a time. Off the server process, a
  * tool call arriving mid-embed is answered promptly instead of queueing behind
  * the model.
@@ -24,7 +27,8 @@ if (!root) {
 
 const { store } = await openStore(root);
 try {
-  await store.update();
+  // Indexing already happened in the caller — repeating it here would be the
+  // one place two processes could write at once, and qmd sets no busy_timeout.
   if ((await store.getStatus()).needsEmbedding > 0) await store.embed();
 } finally {
   await store.close();
