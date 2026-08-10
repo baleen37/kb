@@ -13,6 +13,9 @@
     "qmd"
   ],
   "private": true,
+  "scripts": {
+    "test": "GGML_METAL_NO_RESIDENCY=1 bun test"
+  },
   "devDependencies": {
     "@semantic-release/exec": "^6.0.3",
     "@semantic-release/git": "^10.0.1",

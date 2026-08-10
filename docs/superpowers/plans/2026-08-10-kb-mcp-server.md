@@ -18,6 +18,7 @@
 - **`dbPath`의 부모 디렉터리는 우리가 만든다.** qmd는 SQLite 파일을 직접 열 뿐 `.qmd/`를 생성하지 않는다 (`dist/db.js:58`이 `new _Database(path)`를 그대로 호출). 없으면 `SQLITE_CANTOPEN`으로 죽는다. 디스크를 건드리는 쪽은 `openStore`이고, `storeOptionsFor`는 경로만 계산하는 순수 함수로 남긴다.
 - 의존성 버전은 qmd가 쓰는 것과 맞춘다: `@modelcontextprotocol/sdk` 1.29.0, `zod` 4.2.1.
 - 파일은 `bun`으로 실행한다. 새 런타임이나 빌드 단계를 도입하지 않는다.
+- **macOS에서 임베딩을 돌리는 프로세스는 `GGML_METAL_NO_RESIDENCY=1`이 필요하다.** libggml-metal이 정적 소멸자에서 `[rsets->data count] == 0`을 어서션하며 종료 시 abort한다 (업스트림 `ggml-org/llama.cpp#22593`, 수정 PR #22595 미머지). 테스트는 전부 통과하는데 exit code만 134가 된다. 이 변수는 libc `getenv`로 모듈 로드 시점에 읽히므로 **프로세스 시작 전에** 설정해야 하고, 런타임 대입은 효과가 없다. `bun test`는 `package.json`의 test 스크립트가 처리한다. `qmd` CLI는 `bin/qmd`가 자체 처리하지만 우리 서버는 그 래퍼를 거치지 않으므로 진입점에서 직접 다뤄야 한다.
 
 ## File Structure
 
@@ -940,6 +941,7 @@ than a protocol error — the caller can act on it either way."
 
 **Files:**
 - Create: `lib/mcp/server.ts`
+- Create: `lib/mcp/start.sh`
 - Test: `lib/mcp/server.test.ts`
 
 **Interfaces:**
@@ -1128,6 +1130,26 @@ if (import.meta.main) {
 }
 ```
 
+- [ ] **Step 3b: 런처 스크립트를 만든다**
+
+`GGML_METAL_NO_RESIDENCY`는 libc `getenv`로 모듈 로드 시점에 읽히므로, `server.ts` 안에서 `process.env`에 대입해봐야 늦는다. 프로세스를 시작하기 전에 설정하는 얇은 런처가 필요하다. `qmd` CLI도 같은 이유로 `bin/qmd`에서 이 일을 한다.
+
+Create `lib/mcp/start.sh`:
+
+```bash
+#!/usr/bin/env bash
+# Launch the kb MCP server.
+#
+# libggml-metal asserts on a non-empty residency set in its static destructor
+# (ggml-org/llama.cpp#22593) and aborts at exit once embedding has run. The
+# variable is read by libc getenv at module load, so it must be set before the
+# process starts — assigning it inside server.ts is too late.
+export GGML_METAL_NO_RESIDENCY="${GGML_METAL_NO_RESIDENCY:-1}"
+exec bun "$(dirname "$0")/server.ts" "$@"
+```
+
+Then: `chmod +x lib/mcp/start.sh`
+
 - [ ] **Step 4: 통과 확인**
 
 Run: `bun test lib/mcp/server.test.ts`
@@ -1135,13 +1157,13 @@ Expected: PASS, 4 tests
 
 - [ ] **Step 5: vault 없을 때 동작 확인**
 
-Run: `cd /tmp && bun /Users/jito.hello/dev/kb/lib/mcp/server.ts; echo "exit=$?"`
+Run: `cd /tmp && "$OLDPWD/lib/mcp/start.sh"; echo "exit=$?"` (worktree 루트에서 시작)
 Expected: `.kb.yaml` 예시를 담은 안내 출력, `exit=2`
 
 - [ ] **Step 6: 커밋**
 
 ```bash
-git add lib/mcp/server.ts lib/mcp/server.test.ts
+git add lib/mcp/server.ts lib/mcp/start.sh lib/mcp/server.test.ts
 git commit -m "feat(mcp): serve the four tools over stdio
 
 Instructions are assembled from live status. qmd's version tells callers
@@ -1241,13 +1263,14 @@ Expected: 전부 PASS
 {
   "mcpServers": {
     "kb": {
-      "command": "bun",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/lib/mcp/server.ts"],
+      "command": "${CLAUDE_PLUGIN_ROOT}/lib/mcp/start.sh",
       "cwd": "/path/to/vault"
     }
   }
 }
 ```
+
+런처를 직접 실행한다. `bun`을 부르는 것은 런처의 마지막 줄이고, 그 앞에서 Metal 환경변수를 세운다.
 
 그리고 Setup 절의 `qmd init` 3줄 블록과 그 아래 글로벌 config 경고 문단을 다음으로 교체한다. 서버가 `.kb.yaml`만 보고 인덱스를 만들므로 수동 등록이 필요 없어졌다:
 
