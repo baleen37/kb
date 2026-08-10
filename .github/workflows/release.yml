@@ -28,7 +28,33 @@ jobs:
       - name: Install release tooling
         run: npm install --no-audit --no-fund
 
+      # Releases created with GITHUB_TOKEN do not trigger other workflows, so the
+      # marketplace is notified from inside this job. `successCmd` in .releaserc.json
+      # sets the version output, and only when a release actually shipped.
       - name: Run semantic-release
+        id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
+
+      - name: Generate marketplace token
+        id: app-token
+        # Absent the release App, skip the notification rather than fail: the
+        # marketplace cron picks the new version up within the hour either way.
+        if: ${{ steps.release.outputs.version != '' && env.APP_ID != '' }}
+        env:
+          APP_ID: ${{ secrets.BALEEN_RELEASE_APP_ID }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BALEEN_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BALEEN_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: baleen-marketplace
+
+      - name: Notify marketplace
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: baleen37/baleen-marketplace/.github/actions/notify@v2.5.0
+        with:
+          source: kb
+          version: ${{ steps.release.outputs.version }}
+          token: ${{ steps.app-token.outputs.token }}
