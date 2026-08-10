@@ -1,0 +1,21 @@
+{
+  "name": "@baleen/kb",
+  "version": "0.1.0",
+  "description": "Agent-maintained knowledge vaults — ingest sources into concept pages, query with citations, keep the synthesis from going stale",
+  "license": "MIT",
+  "repository": "https://github.com/baleen37/kb",
+  "homepage": "https://github.com/baleen37/kb",
+  "keywords": [
+    "claude-code",
+    "knowledge-base",
+    "wiki",
+    "vault",
+    "qmd"
+  ],
+  "private": true,
+  "devDependencies": {
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "semantic-release": "^24.2.0"
+  }
+}

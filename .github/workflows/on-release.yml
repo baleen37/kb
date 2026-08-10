@@ -1,0 +1,38 @@
+name: On Release
+
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  notify-marketplace:
+    runs-on: ubuntu-latest
+    env:
+      # Empty until the release App is configured on this repo. Without it we skip the
+      # notification rather than fail the release — the marketplace cron picks the new
+      # version up within the hour either way.
+      HAS_APP: ${{ secrets.BALEEN_RELEASE_APP_ID != '' && secrets.BALEEN_RELEASE_APP_PRIVATE_KEY != '' }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        if: ${{ env.HAS_APP == 'true' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.BALEEN_RELEASE_APP_ID }}
+          private-key: ${{ secrets.BALEEN_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: baleen-marketplace
+
+      - name: Notify marketplace
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: baleen37/baleen-marketplace/.github/actions/notify@v2.5.0
+        with:
+          source: kb
+          version: ${{ github.event.release.tag_name }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Report skip
+        if: ${{ steps.app-token.outputs.token == '' }}
+        run: echo "No release App token configured; the marketplace will sync on its hourly schedule."
