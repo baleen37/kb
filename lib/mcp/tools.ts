@@ -136,9 +136,19 @@ export const multiGetSchema = {
   lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
 };
 
+/**
+ * multiGet has no line limit of its own, so honor maxLines here — and say so
+ * when content was dropped. Silent truncation reads as a document that simply
+ * ends, giving the caller no reason to re-fetch it with `get`.
+ */
 function clip(body: string, maxLines?: number): string {
   if (maxLines === undefined) return body;
-  return body.split("\n").slice(0, maxLines).join("\n");
+
+  const lines = body.split("\n");
+  if (lines.length <= maxLines) return body;
+
+  const dropped = lines.length - maxLines;
+  return `${lines.slice(0, maxLines).join("\n")}\n\n[... truncated ${dropped} more lines]`;
 }
 
 export async function handleGet(

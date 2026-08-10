@@ -116,3 +116,39 @@ test("multi_get fetches by glob", async () => {
     v.cleanup();
   }
 }, 120_000);
+
+test("multi_get says when it truncated a document", async () => {
+  const long = Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n");
+  const v = makeVault({ docs: { "long.md": `# Long\n\n${long}` } });
+  try {
+    const p = await prepareStore(v.root);
+    await p.ready;
+
+    const out = await handleMultiGet(p, { pattern: "*.md", maxLines: 5 });
+    const text = out.content[0].text;
+
+    // Silently ending mid-document gives the caller no reason to re-fetch.
+    expect(text).toContain("truncated");
+    expect(text).toMatch(/\[\.\.\. truncated \d+ more lines\]/);
+    expect(text).not.toContain("line 29");
+
+    await p.close();
+  } finally {
+    v.cleanup();
+  }
+}, 120_000);
+
+test("multi_get stays quiet when nothing was dropped", async () => {
+  const v = makeVault({ docs: { "short.md": "# Short\n\njust two lines" } });
+  try {
+    const p = await prepareStore(v.root);
+    await p.ready;
+
+    const out = await handleMultiGet(p, { pattern: "*.md", maxLines: 500 });
+    expect(out.content[0].text).not.toContain("truncated");
+
+    await p.close();
+  } finally {
+    v.cleanup();
+  }
+}, 120_000);

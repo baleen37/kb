@@ -11,7 +11,6 @@
 import { createWriteStream } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import type { IndexStatus } from "@tobilu/qmd";
 import { VaultNotFound } from "../vault.ts";
 import { prepareStore, type Prepared } from "./store.ts";
 import {
@@ -29,22 +28,19 @@ import {
  * qmd's own instructions tell callers to scope with a singular `collection`
  * while the schema takes plural `collections`. We own this text, so we fix it.
  */
-export function buildInstructions(status: IndexStatus, collection: string): string {
-  // No document count here. Instructions are built at startup, before indexing
-  // has run, so any number would say "0 markdown documents" about a full vault
-  // and talk a client out of searching it. `status` reports the live figures.
+export function buildInstructions(collection: string): string {
+  // No figures from `status` here. Instructions are built at startup, before
+  // recovery has indexed anything, so every count reads zero — a full vault
+  // would look empty, and the "documents need embedding" warning would stay
+  // silent on exactly the cold start where it matters. `status` reports live.
   const lines = [
     `A searchable vault of markdown documents.`,
     "",
     `Collection: ${collection}. Filter with the \`collections\` parameter — plural, an array.`,
+    "",
+    "Call `status` before relying on `vec` or `hyde`: until embedding finishes",
+    "they return little or nothing, while `lex` works as soon as indexing does.",
   ];
-
-  if (status.needsEmbedding > 0) {
-    lines.push(
-      "",
-      `Note: ${status.needsEmbedding} documents need embedding. Vector and hyde searches stay incomplete until that finishes.`,
-    );
-  }
 
   lines.push(
     "",
@@ -60,10 +56,10 @@ export function buildInstructions(status: IndexStatus, collection: string): stri
   return lines.join("\n");
 }
 
-export async function createMcpServer(p: Prepared): Promise<McpServer> {
+export function createMcpServer(p: Prepared): McpServer {
   const server = new McpServer(
     { name: "kb", version: "1.0.0" },
-    { instructions: buildInstructions(await p.store.getStatus(), p.vault.collection) },
+    { instructions: buildInstructions(p.vault.collection) },
   );
 
   const readOnly = { readOnlyHint: true, openWorldHint: false };
@@ -132,7 +128,7 @@ if (import.meta.main) {
     throw error;
   }
 
-  const server = await createMcpServer(prepared);
+  const server = createMcpServer(prepared);
 
   // Our own handle on fd 1, rather than process.stdout.
   //

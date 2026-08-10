@@ -1,35 +1,54 @@
 import { test, expect } from "bun:test";
-import { buildInstructions } from "./server.ts";
+import { buildInstructions, createMcpServer } from "./server.ts";
+import { makeVault } from "./fixture.ts";
+import { prepareStore } from "./store.ts";
 
-const status = {
-  totalDocuments: 42,
-  needsEmbedding: 0,
-  hasVectorIndex: true,
-  collections: [
-    { name: "wiki", path: "/vault/wiki", pattern: "**/*.md", documents: 42, lastUpdated: "" },
-  ],
-};
+test("instructions never quote figures from the index", () => {
+  // They are built before recovery indexes anything, so every count would read
+  // zero: a full vault would look empty and an embedding warning would stay
+  // silent on the cold start where it matters. `status` reports live figures.
+  const text = buildInstructions("wiki");
+  expect(text).not.toMatch(/\d+ markdown documents/);
+  expect(text).not.toMatch(/\d+ documents need embedding/);
+  expect(text).toContain("searchable vault");
+});
 
-test("instructions never claim a document count", () => {
-  // They are built before indexing runs, so a count would read "0 markdown
-  // documents" for a full vault and talk the client out of searching it.
-  const empty = { ...status, totalDocuments: 0, collections: [] };
-  expect(buildInstructions(empty, "wiki")).not.toMatch(/\d+ markdown documents/);
-  expect(buildInstructions(status, "wiki")).not.toMatch(/\d+ markdown documents/);
-  expect(buildInstructions(empty, "wiki")).toContain("searchable vault");
+test("instructions point at status for embedding readiness", () => {
+  const text = buildInstructions("wiki");
+  expect(text).toContain("`status`");
+  expect(text).toMatch(/vec/);
+  expect(text).toMatch(/lex/);
 });
 
 test("instructions say collections, never the singular trap", () => {
-  const text = buildInstructions(status, "wiki");
+  const text = buildInstructions("wiki");
   expect(text).toContain("`collections`");
   expect(text).not.toMatch(/`collection`[^s]/);
 });
 
-test("instructions surface pending embedding work", () => {
-  const stale = { ...status, needsEmbedding: 41 };
-  expect(buildInstructions(stale, "wiki")).toContain("41 documents need embedding");
+test("instructions name the vault's own collection", () => {
+  expect(buildInstructions("kb-notes")).toContain("Collection: kb-notes");
 });
 
-test("instructions stay quiet when the index is healthy", () => {
-  expect(buildInstructions(status, "wiki")).not.toContain("need embedding");
-});
+test("a real server carries honest instructions on a cold start", async () => {
+  // The wiring test the unit tests above cannot be: build a server the way the
+  // entry point does, on a vault that has never been indexed, and confirm the
+  // instructions do not describe it as empty.
+  const v = makeVault({ docs: { "a.md": "# A\n\nalpha", "b.md": "# B\n\nbeta" } });
+  try {
+    const p = await prepareStore(v.root);
+    const server = createMcpServer(p); // before p.ready — exactly as main does
+
+    const instructions = (
+      server.server as unknown as { _instructions?: string }
+    )._instructions;
+
+    expect(instructions).toBeDefined();
+    expect(instructions).not.toMatch(/\b0 (markdown documents|documents)/);
+    expect(instructions).toContain("`collections`");
+
+    await p.close();
+  } finally {
+    v.cleanup();
+  }
+}, 120_000);

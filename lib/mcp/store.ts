@@ -47,26 +47,41 @@ export type Prepared = {
   close: () => Promise<void>;
 };
 
-/** Runs embed.ts against a vault and resolves when it exits. */
-function embedElsewhere(root: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [join(import.meta.dir, "embed.ts"), root],
-      { stdio: ["ignore", "ignore", "pipe"] },
-    );
+/**
+ * Runs embed.ts against a vault. Returns the promise plus a way to stop it —
+ * embedding a large vault takes minutes, and shutdown should not wait for it.
+ */
+function embedElsewhere(root: string): { done: Promise<void>; cancel: () => void } {
+  const child = spawn(process.execPath, [join(import.meta.dir, "embed.ts"), root], {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
 
-    let stderr = "";
-    child.stderr?.on("data", (chunk) => {
-      stderr += String(chunk);
-    });
+  let stderr = "";
+  child.stderr?.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
 
+  let cancelled = false;
+
+  const done = new Promise<void>((resolve, reject) => {
     child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`embed exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`));
+    child.on("exit", (code, signal) => {
+      // Our own kill is a clean stop, not a failure.
+      if (cancelled) return resolve();
+      if (code === 0) return resolve();
+
+      const how = signal ? `killed by ${signal}` : `exited ${code}`;
+      reject(new Error(`embed ${how}${stderr ? `: ${stderr.trim()}` : ""}`));
     });
   });
+
+  return {
+    done,
+    cancel: () => {
+      cancelled = true;
+      child.kill();
+    },
+  };
 }
 
 /**
@@ -78,16 +93,23 @@ function embedElsewhere(root: string): Promise<void> {
  *
  * Recovery runs in the background either way; tool handlers await `ready`.
  * A failure does not kill the server — lex search still works without vectors,
- * and a partly working server beats a dead one.
+ * and a partly working server beats a dead one. `close` cancels an embed in
+ * flight rather than waiting it out.
  */
 export async function prepareStore(from?: string): Promise<Prepared> {
   const { store, vault } = await openStore(from);
   const recovery: Recovery = { state: "pending" };
 
+  let stopEmbedding: (() => void) | undefined;
+
   const ready = (async () => {
     try {
       await store.update();
-      if ((await store.getStatus()).needsEmbedding > 0) await embedElsewhere(vault.root);
+      if ((await store.getStatus()).needsEmbedding > 0) {
+        const embedding = embedElsewhere(vault.root);
+        stopEmbedding = embedding.cancel;
+        await embedding.done;
+      }
       recovery.state = "done";
     } catch (error) {
       recovery.state = "failed";
@@ -101,6 +123,9 @@ export async function prepareStore(from?: string): Promise<Prepared> {
     ready,
     recovery,
     close: async () => {
+      // Stop any embedding first. Waiting for it would hold shutdown open for
+      // as long as the vault takes to embed — minutes, on a large one.
+      stopEmbedding?.();
       await ready;
       await store.close();
     },

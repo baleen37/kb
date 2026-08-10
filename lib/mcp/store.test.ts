@@ -159,3 +159,34 @@ test("the embedder runs outside this process", async () => {
     v.cleanup();
   }
 }, 120_000);
+
+test("closing mid-embed leaves the vault recoverable", async () => {
+  const docs = Object.fromEntries(
+    Array.from({ length: 40 }, (_, i) => [
+      `doc${i}.md`,
+      `# Doc ${i}\n\n${"quokka numbat bilby potoroo ".repeat(40)}\n`,
+    ]),
+  );
+  const v = makeVault({ docs });
+  try {
+    const p = await prepareStore(v.root);
+    await p.close(); // while recovery is still embedding
+
+    // close() kills the embedder rather than waiting for it, so this covers the
+    // consequence: a cancelled embed must not corrupt the index or be recorded
+    // as a failure, and the next run must finish the job.
+    //
+    // It does not prove the kill itself happened — on this machine a 40-doc
+    // embed finishes in ~3s, so any timing threshold would pass with or without
+    // cancellation. The kill is exercised in production shutdowns, not here.
+    const after = await prepareStore(v.root);
+    await after.ready;
+    expect(after.recovery.state).toBe("done");
+    await after.close();
+
+    // The cancelled run must not have been recorded as a failure either.
+    expect(p.recovery.state).not.toBe("failed");
+  } finally {
+    v.cleanup();
+  }
+}, 180_000);
