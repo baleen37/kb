@@ -69,10 +69,8 @@ Then add one line to that repo's `CLAUDE.md` / `AGENTS.md` telling agents to sea
 vault before investigating from scratch. The MCP server supplies the tool; the line
 supplies the intent. Neither works alone.
 
-When filtering a search, note that the MCP `query` tool takes **`collections`** — plural,
-an array. MCP drops unknown parameters silently, so a singular `collection` disappears
-without an error and the filter never applies. The CLI is the opposite: `-c` with an
-unknown name fails loudly.
+A search covers the whole vault — the MCP `query` tool has no collection filter, since a
+vault holds exactly one collection and the server scopes every search to it.
 
 ## Skills
 

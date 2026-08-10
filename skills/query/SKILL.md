@@ -24,9 +24,8 @@ authoritative and are about a different system.
 
 ## Search
 
-With the MCP server, call its `query` tool. Note the parameter is **`collections`
-(plural, an array)** — MCP silently ignores unknown parameters, so a singular
-`collection` is dropped without error and the filter never applies.
+With the MCP server, call its `query` tool. It searches the whole vault and takes no
+collection filter — the server scopes every search to the vault it was started in.
 
 Otherwise run the CLI from the vault root:
 

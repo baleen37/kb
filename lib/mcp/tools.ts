@@ -25,7 +25,6 @@ export const querySchema = {
   limit: z.number().optional().describe("Max results (default: 10)"),
   minScore: z.number().optional().describe("Min relevance 0-1 (default: 0)"),
   candidateLimit: z.number().optional().describe("Maximum candidates to rerank (default: 40)"),
-  collections: z.array(z.string()).optional().describe("Filter to collections (OR match)"),
   intent: z.string().optional().describe("Background context to disambiguate the query."),
   rerank: z.boolean().optional().describe("Rerank results using LLM (default: true)"),
 };
@@ -73,20 +72,24 @@ export async function handleQuery(
     limit?: number;
     minScore?: number;
     candidateLimit?: number;
-    collections?: string[];
     intent?: string;
     rerank?: boolean;
   },
 ) {
   await p.ready;
 
+  // A vault holds exactly one collection (see storeOptionsFor), so we name it
+  // here rather than exposing a filter. Letting callers pass one gave them two
+  // outcomes only: the right name, which changed nothing, or any other string,
+  // which silently returned zero results.
+  //
   // Forward only what the caller set; omitted keys must fall through to qmd's defaults.
   const results = await p.store.search({
     queries: args.searches,
+    collections: [p.vault.collection],
     ...(args.limit !== undefined && { limit: args.limit }),
     ...(args.minScore !== undefined && { minScore: args.minScore }),
     ...(args.candidateLimit !== undefined && { candidateLimit: args.candidateLimit }),
-    ...(args.collections !== undefined && { collections: args.collections }),
     ...(args.intent !== undefined && { intent: args.intent }),
     ...(args.rerank !== undefined && { rerank: args.rerank }),
   });

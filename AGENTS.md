@@ -54,12 +54,20 @@ Store and server tests build a real vault, index it, and embed. They take tens o
 seconds and carry explicit `120_000` timeouts. Do not shrink those to make a run feel
 faster.
 
-## The two traps
+## Do not add a collection filter back
 
-**`collections`, plural.** The MCP `query` tool takes an array. MCP drops unknown
-parameters silently, so a singular `collection` vanishes with no error and the filter
-never applies — the search silently returns everything. A test in `tools.test.ts` guards
-this; keep it.
+`query` has no `collections` parameter. A vault holds exactly one collection —
+`storeOptionsFor` builds the map with a single key — so the filter had two reachable
+outcomes: the vault's own name, identical to omitting it, or any other string, which
+silently returned zero results. It could only break a search.
+
+Its presence also created the plural/singular trap this repo used to warn about: MCP
+drops unknown parameters silently, so a caller writing `collection` lost the filter with
+no error. Removing the parameter removes the trap. `handleQuery` names the vault's
+collection itself, and a test in `tools.test.ts` asserts what qmd was asked for — keep
+that one; asserting the schema lacks the field would not catch an unscoped search.
+
+## The stdout trap
 
 **qmd owns `process.stdout`.** qmd swaps `process.stdout.write` for one writing to
 stderr on every llama model load, to keep native noise out of JSON streams. We speak

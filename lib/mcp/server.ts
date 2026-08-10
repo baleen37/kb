@@ -22,19 +22,13 @@ import {
   handleGet,
 } from "./tools.ts";
 
-/**
- * qmd's own instructions tell callers to scope with a singular `collection`
- * while the schema takes plural `collections`. We own this text, so we fix it.
- */
-export function buildInstructions(collection: string): string {
+export function buildInstructions(): string {
   // No figures from `status` here. Instructions are built at startup, before
   // recovery has indexed anything, so every count reads zero — a full vault
   // would look empty, and the "documents need embedding" warning would stay
   // silent on exactly the cold start where it matters. `status` reports live.
   const lines = [
-    `A searchable vault of markdown documents.`,
-    "",
-    `Collection: ${collection}. Filter with the \`collections\` parameter — plural, an array.`,
+    `A searchable vault of markdown documents. Every search covers the whole vault.`,
     "",
     "Call `status` before relying on `vec` or `hyde`: until embedding finishes",
     "they return little or nothing, while `lex` works as soon as indexing does.",
@@ -56,7 +50,7 @@ export function buildInstructions(collection: string): string {
 export function createMcpServer(p: Prepared): McpServer {
   const server = new McpServer(
     { name: "kb", version: "1.0.0" },
-    { instructions: buildInstructions(p.vault.collection) },
+    { instructions: buildInstructions() },
   );
 
   const readOnly = { readOnlyHint: true, openWorldHint: false };
