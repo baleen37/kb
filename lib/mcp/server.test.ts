@@ -10,8 +10,13 @@ const status = {
   ],
 };
 
-test("instructions report the live document count", () => {
-  expect(buildInstructions(status, "wiki")).toContain("42 markdown documents");
+test("instructions never claim a document count", () => {
+  // They are built before indexing runs, so a count would read "0 markdown
+  // documents" for a full vault and talk the client out of searching it.
+  const empty = { ...status, totalDocuments: 0, collections: [] };
+  expect(buildInstructions(empty, "wiki")).not.toMatch(/\d+ markdown documents/);
+  expect(buildInstructions(status, "wiki")).not.toMatch(/\d+ markdown documents/);
+  expect(buildInstructions(empty, "wiki")).toContain("searchable vault");
 });
 
 test("instructions say collections, never the singular trap", () => {

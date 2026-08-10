@@ -30,8 +30,11 @@ import {
  * while the schema takes plural `collections`. We own this text, so we fix it.
  */
 export function buildInstructions(status: IndexStatus, collection: string): string {
+  // No document count here. Instructions are built at startup, before indexing
+  // has run, so any number would say "0 markdown documents" about a full vault
+  // and talk a client out of searching it. `status` reports the live figures.
   const lines = [
-    `This vault holds ${status.totalDocuments} markdown documents.`,
+    `A searchable vault of markdown documents.`,
     "",
     `Collection: ${collection}. Filter with the \`collections\` parameter — plural, an array.`,
   ];
