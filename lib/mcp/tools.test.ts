@@ -4,13 +4,20 @@ import { prepareStore } from "./store.ts";
 import { handleQuery, handleStatus, querySchema } from "./tools.ts";
 import { handleGet, handleMultiGet } from "./tools.ts";
 
+// rerank runs an LLM, and qmd refuses that whenever CI=true, so a reranked
+// query cannot resolve on a runner. The fields asserted here come from the hit
+// itself, not from the ordering, so this turns rerank off and covers the
+// forwarding separately below.
 test("query returns hits with the fields callers cite", async () => {
   const v = makeVault({ docs: { "pool.md": "# Pools\n\nconnection pool timeouts under load" } });
   try {
     const p = await prepareStore(v.root);
     await p.ready;
 
-    const out = await handleQuery(p, { searches: [{ type: "lex", query: "connection pool" }] });
+    const out = await handleQuery(p, {
+      searches: [{ type: "lex", query: "connection pool" }],
+      rerank: false,
+    });
     expect(out.structuredContent.results.length).toBeGreaterThan(0);
 
     const hit = out.structuredContent.results[0];
@@ -25,6 +32,28 @@ test("query returns hits with the fields callers cite", async () => {
     v.cleanup();
   }
 }, 120_000);
+
+// The real store reranks by default, which an LLM-less runner cannot do. A stub
+// store records what handleQuery forwarded, so the default and an explicit
+// override are both covered without reaching a model.
+test("query leaves rerank to qmd unless the caller sets it", async () => {
+  const calls: Record<string, unknown>[] = [];
+  const p = {
+    ready: Promise.resolve(),
+    store: {
+      search: async (opts: Record<string, unknown>) => {
+        calls.push(opts);
+        return [];
+      },
+    },
+  } as unknown as Parameters<typeof handleQuery>[0];
+
+  await handleQuery(p, { searches: [{ type: "lex", query: "pool" }] });
+  expect("rerank" in calls[0]).toBe(false);
+
+  await handleQuery(p, { searches: [{ type: "lex", query: "pool" }], rerank: false });
+  expect(calls[1].rerank).toBe(false);
+});
 
 test("status mirrors IndexStatus exactly", async () => {
   const v = makeVault({ docs: { "a.md": "# A\n\nalpha" } });
