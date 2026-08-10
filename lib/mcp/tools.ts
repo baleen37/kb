@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { addLineNumbers, DEFAULT_MULTI_GET_MAX_BYTES } from "@tobilu/qmd";
 import type { HybridQueryResult, IndexStatus } from "@tobilu/qmd";
 import type { Prepared } from "./store.ts";
 
@@ -118,5 +119,82 @@ export async function handleStatus(p: Prepared) {
   return {
     content: [{ type: "text" as const, text: lines.join("\n") }],
     structuredContent: status,
+  };
+}
+
+export const getSchema = {
+  file: z.string().describe("File path or docid from search results."),
+  fromLine: z.number().optional().describe("Start from this line number (1-indexed)"),
+  maxLines: z.number().optional().describe("Maximum number of lines to return"),
+  lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
+};
+
+export const multiGetSchema = {
+  pattern: z.string().describe("Glob pattern or comma-separated list of file paths"),
+  maxLines: z.number().optional().describe("Maximum lines per file"),
+  maxBytes: z.number().optional().describe("Skip files larger than this (default: 10240)"),
+  lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
+};
+
+function clip(body: string, maxLines?: number): string {
+  if (maxLines === undefined) return body;
+  return body.split("\n").slice(0, maxLines).join("\n");
+}
+
+export async function handleGet(
+  p: Prepared,
+  args: { file: string; fromLine?: number; maxLines?: number; lineNumbers?: boolean },
+) {
+  await p.ready;
+
+  const doc = await p.store.get(args.file);
+  if ("error" in doc) {
+    const suggestion = doc.similarFiles.length
+      ? `\nSimilar files: ${doc.similarFiles.join(", ")}`
+      : "";
+    return {
+      content: [{ type: "text" as const, text: `Document not found: ${args.file}${suggestion}` }],
+      structuredContent: doc,
+    };
+  }
+
+  const body =
+    (await p.store.getDocumentBody(args.file, {
+      ...(args.fromLine !== undefined && { fromLine: args.fromLine }),
+      ...(args.maxLines !== undefined && { maxLines: args.maxLines }),
+    })) ?? "";
+
+  const numbered =
+    args.lineNumbers === false ? body : addLineNumbers(body, args.fromLine ?? 1);
+
+  return {
+    content: [{ type: "text" as const, text: `${doc.displayPath} (#${doc.docid})\n${numbered}` }],
+    structuredContent: { ...doc, body },
+  };
+}
+
+export async function handleMultiGet(
+  p: Prepared,
+  args: { pattern: string; maxLines?: number; maxBytes?: number; lineNumbers?: boolean },
+) {
+  await p.ready;
+
+  const { docs, errors } = await p.store.multiGet(args.pattern, {
+    includeBody: true,
+    maxBytes: args.maxBytes ?? DEFAULT_MULTI_GET_MAX_BYTES,
+  });
+
+  const chunks = docs.map((entry) => {
+    if (entry.skipped) return `${entry.doc.displayPath}\n[skipped: ${entry.skipReason}]`;
+    const body = clip(entry.doc.body ?? "", args.maxLines);
+    const shown = args.lineNumbers === false ? body : addLineNumbers(body, 1);
+    return `${entry.doc.displayPath} (#${entry.doc.docid})\n${shown}`;
+  });
+
+  if (errors.length) chunks.push(`Errors: ${errors.join(", ")}`);
+
+  return {
+    content: [{ type: "text" as const, text: chunks.join("\n\n") || "No documents matched." }],
+    structuredContent: { docs, errors },
   };
 }
