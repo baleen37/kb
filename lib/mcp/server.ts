@@ -4,8 +4,8 @@
  *
  *   bun lib/mcp/server.ts     # serves the vault containing cwd
  *
- * Same four tools as `qmd mcp`, built on the qmd SDK so the vault's index is
- * the only one reachable.
+ * Three tools — query, get, status — built on the qmd SDK so the vault's index
+ * is the only one reachable.
  */
 
 import { createWriteStream } from "node:fs";
@@ -17,11 +17,9 @@ import {
   querySchema,
   statusSchema,
   getSchema,
-  multiGetSchema,
   handleQuery,
   handleStatus,
   handleGet,
-  handleMultiGet,
 } from "./tools.ts";
 
 /**
@@ -49,8 +47,7 @@ export function buildInstructions(collection: string): string {
     "  - vec — semantic vector search (meaning-based)",
     "  - hyde — hypothetical answer passage",
     "",
-    "Retrieval: `get` for one document (path or #docid, line ranges supported),",
-    "`multi_get` for a glob or comma-separated list.",
+    "Retrieval: `get` for one document (path or #docid, line ranges supported).",
   );
 
   return lines.join("\n");
@@ -87,18 +84,6 @@ export function createMcpServer(p: Prepared): McpServer {
       annotations: readOnly,
     },
     (args) => handleGet(p, args),
-  );
-
-  server.registerTool(
-    "multi_get",
-    {
-      title: "Multi-Get Documents",
-      description:
-        "Retrieve multiple documents by glob pattern or comma-separated list. Skips oversized files.",
-      inputSchema: multiGetSchema,
-      annotations: readOnly,
-    },
-    (args) => handleMultiGet(p, args),
   );
 
   server.registerTool(

@@ -1,8 +1,7 @@
 import { test, expect } from "bun:test";
 import { makeVault } from "./fixture.ts";
 import { prepareStore } from "./store.ts";
-import { handleQuery, handleStatus, querySchema } from "./tools.ts";
-import { handleGet, handleMultiGet } from "./tools.ts";
+import { handleQuery, handleStatus, handleGet, querySchema } from "./tools.ts";
 
 // rerank runs an LLM, and qmd refuses that whenever CI=true, so a reranked
 // query cannot resolve on a runner. The fields asserted here come from the hit
@@ -123,58 +122,6 @@ test("a missing document is a result, not a protocol error", async () => {
     const out = await handleGet(p, { file: "nope.md" });
     expect(out.content[0].text).toContain("not found");
     expect((out.structuredContent as { error?: string }).error).toBe("not_found");
-
-    await p.close();
-  } finally {
-    v.cleanup();
-  }
-}, 120_000);
-
-test("multi_get fetches by glob", async () => {
-  const v = makeVault({ docs: { "a.md": "# A\n\nalpha", "b.md": "# B\n\nbeta" } });
-  try {
-    const p = await prepareStore(v.root);
-    await p.ready;
-
-    const out = await handleMultiGet(p, { pattern: "*.md" });
-    expect(out.content[0].text).toContain("alpha");
-    expect(out.content[0].text).toContain("beta");
-
-    await p.close();
-  } finally {
-    v.cleanup();
-  }
-}, 120_000);
-
-test("multi_get says when it truncated a document", async () => {
-  const long = Array.from({ length: 30 }, (_, i) => `line ${i}`).join("\n");
-  const v = makeVault({ docs: { "long.md": `# Long\n\n${long}` } });
-  try {
-    const p = await prepareStore(v.root);
-    await p.ready;
-
-    const out = await handleMultiGet(p, { pattern: "*.md", maxLines: 5 });
-    const text = out.content[0].text;
-
-    // Silently ending mid-document gives the caller no reason to re-fetch.
-    expect(text).toContain("truncated");
-    expect(text).toMatch(/\[\.\.\. truncated \d+ more lines\]/);
-    expect(text).not.toContain("line 29");
-
-    await p.close();
-  } finally {
-    v.cleanup();
-  }
-}, 120_000);
-
-test("multi_get stays quiet when nothing was dropped", async () => {
-  const v = makeVault({ docs: { "short.md": "# Short\n\njust two lines" } });
-  try {
-    const p = await prepareStore(v.root);
-    await p.ready;
-
-    const out = await handleMultiGet(p, { pattern: "*.md", maxLines: 500 });
-    expect(out.content[0].text).not.toContain("truncated");
 
     await p.close();
   } finally {

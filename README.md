@@ -5,10 +5,10 @@ Agent-maintained knowledge vaults for Claude Code and Codex.
 A **vault** is a git repository where agents maintain a synthesis of sources instead of
 rediscovering the same facts at query time. It follows the
 [LLM Wiki pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
-immutable sources under `raw/`, an agent-owned wiki under `wiki/`, and a schema humans own.
+immutable sources under `raw/` and an agent-owned wiki under `wiki/`.
 
-This plugin holds the portable half — the schema, the workflows, and the linter. Each
-vault holds its own content and whatever is specific to it.
+This plugin holds the portable half — the workflows and the linter. Each vault holds its
+own content and whatever is specific to it.
 
 ## Why separate vaults
 
@@ -24,7 +24,6 @@ Install the plugin, then in each vault:
 ```yaml
 # .kb.yaml at the vault root
 pages: wiki
-sources: raw
 collection: wiki
 ```
 
@@ -86,8 +85,7 @@ unknown name fails loudly.
 ## Layout
 
 ```text
-SCHEMA.md          # rules every vault follows
-skills/            # ingest, query, lint
+skills/            # ingest, query, lint — ingest carries the vault format rules
 lib/mcp/           # the MCP server — start.sh launches it
 lib/lint.ts        # format checker; resolves the vault from cwd
 lib/vault.ts       # .kb.yaml resolution

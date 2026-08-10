@@ -14,20 +14,18 @@ export type VaultConfig = {
   root: string;
   /** Wiki page directory (default: wiki) */
   pages: string;
-  /** Immutable source snapshot directory (default: raw) */
-  sources: string;
   /** qmd collection name. Local to this vault; vaults have separate indexes */
   collection: string;
 };
 
-const DEFAULTS = { pages: "wiki", sources: "raw", collection: "wiki" };
+const DEFAULTS = { pages: "wiki", collection: "wiki" };
 
 export class VaultNotFound extends Error {
   constructor(from: string) {
     super(
       `No vault found (searched upward from ${from}).\n` +
         "A vault root needs .kb.yaml. For example:\n\n" +
-        "  pages: wiki\n  sources: raw\n  collection: wiki",
+        "  pages: wiki\n  collection: wiki",
     );
     this.name = "VaultNotFound";
   }
@@ -64,7 +62,6 @@ export function loadVault(from?: string): VaultConfig {
   return {
     root,
     pages: join(root, cfg.pages),
-    sources: join(root, cfg.sources),
     collection: cfg.collection,
   };
 }

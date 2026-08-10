@@ -3,9 +3,9 @@
 A Claude Code / Codex plugin that gives agents a searchable knowledge vault. This repo is
 the portable half — schema, skills, linter, MCP server. It holds no vault content.
 
-`SCHEMA.md` is not about this repo. It ships to vaults, as the rules agents follow when
-maintaining one. Read it when changing what vaults must do; ignore it when changing code
-here.
+The rules vaults follow live in `skills/ingest/SKILL.md`, not in a separate schema
+document. They ship to vaults as part of the skill, so an agent maintaining one reads a
+single file. Change them there when changing what vaults must do.
 
 ## Layout
 
@@ -15,7 +15,6 @@ lib/lint.ts        # vault format checker
 lib/mcp/           # the MCP server; start.sh launches it
 skills/            # ingest, query, lint
 hooks/pre-commit   # optional, installed per vault
-SCHEMA.md          # rules shipped to vaults
 ```
 
 ## Never hardcode where the plugin lives

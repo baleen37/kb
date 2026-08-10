@@ -1,5 +1,5 @@
 /**
- * The four tools, mirroring qmd mcp's surface.
+ * The three tools: query, get, status.
  *
  * Handlers know about the store and about MCP's response shape, but nothing
  * about transports. Search options are forwarded only when the caller supplied
@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { addLineNumbers, DEFAULT_MULTI_GET_MAX_BYTES } from "@tobilu/qmd";
+import { addLineNumbers } from "@tobilu/qmd";
 import type { HybridQueryResult, IndexStatus } from "@tobilu/qmd";
 import type { Prepared } from "./store.ts";
 
@@ -129,28 +129,6 @@ export const getSchema = {
   lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
 };
 
-export const multiGetSchema = {
-  pattern: z.string().describe("Glob pattern or comma-separated list of file paths"),
-  maxLines: z.number().optional().describe("Maximum lines per file"),
-  maxBytes: z.number().optional().describe("Skip files larger than this (default: 10240)"),
-  lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
-};
-
-/**
- * multiGet has no line limit of its own, so honor maxLines here — and say so
- * when content was dropped. Silent truncation reads as a document that simply
- * ends, giving the caller no reason to re-fetch it with `get`.
- */
-function clip(body: string, maxLines?: number): string {
-  if (maxLines === undefined) return body;
-
-  const lines = body.split("\n");
-  if (lines.length <= maxLines) return body;
-
-  const dropped = lines.length - maxLines;
-  return `${lines.slice(0, maxLines).join("\n")}\n\n[... truncated ${dropped} more lines]`;
-}
-
 export async function handleGet(
   p: Prepared,
   args: { file: string; fromLine?: number; maxLines?: number; lineNumbers?: boolean },
@@ -180,31 +158,5 @@ export async function handleGet(
   return {
     content: [{ type: "text" as const, text: `${doc.displayPath} (#${doc.docid})\n${numbered}` }],
     structuredContent: { ...doc, body },
-  };
-}
-
-export async function handleMultiGet(
-  p: Prepared,
-  args: { pattern: string; maxLines?: number; maxBytes?: number; lineNumbers?: boolean },
-) {
-  await p.ready;
-
-  const { docs, errors } = await p.store.multiGet(args.pattern, {
-    includeBody: true,
-    maxBytes: args.maxBytes ?? DEFAULT_MULTI_GET_MAX_BYTES,
-  });
-
-  const chunks = docs.map((entry) => {
-    if (entry.skipped) return `${entry.doc.displayPath}\n[skipped: ${entry.skipReason}]`;
-    const body = clip(entry.doc.body ?? "", args.maxLines);
-    const shown = args.lineNumbers === false ? body : addLineNumbers(body, 1);
-    return `${entry.doc.displayPath} (#${entry.doc.docid})\n${shown}`;
-  });
-
-  if (errors.length) chunks.push(`Errors: ${errors.join(", ")}`);
-
-  return {
-    content: [{ type: "text" as const, text: chunks.join("\n\n") || "No documents matched." }],
-    structuredContent: { docs, errors },
   };
 }
