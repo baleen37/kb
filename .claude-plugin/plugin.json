@@ -1,0 +1,10 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "kb",
+  "description": "Agent-maintained knowledge vaults — ingest sources into concept pages, query with citations, keep the synthesis from going stale",
+  "version": "0.1.0",
+  "author": {
+    "name": "baleen",
+    "email": "git@baleen.me"
+  }
+}

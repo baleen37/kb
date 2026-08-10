@@ -1,0 +1,16 @@
+# Raw snapshots are immutable, so keep the shared contract to structural
+# formatting rules that do not rewrite source content.
+default: false
+MD009: true # no trailing spaces
+MD010: true # no hard tabs
+MD012: true # no multiple consecutive blank lines
+MD019: true # no multiple spaces after ATX heading marker
+MD022: true # blank lines around headings
+MD023: true # headings start at the beginning of the line
+MD027: true # one space after blockquote marker
+MD030: true # one space after list markers
+MD035: true # consistent thematic breaks
+MD038: true # no spaces inside code spans
+MD039: true # no spaces inside link text
+MD047: true # single trailing newline
+MD048: true # consistent fenced-code marker
