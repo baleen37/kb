@@ -23,5 +23,10 @@ jobs:
         with:
           bun-version: latest
 
+      # Runners have no GPU, so every spawn of the real embedder spends ~50s
+      # loading the model on CPU. The tests that actually assert on vectors opt
+      # back into it themselves; the rest get the stub.
       - name: Run tests
         run: npm test
+        env:
+          KB_EMBED_SCRIPT: lib/mcp/embed.stub.ts
