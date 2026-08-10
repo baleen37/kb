@@ -23,9 +23,12 @@ command -v bun >/dev/null 2>&1 || {
   exit 0
 }
 
-KB_LINT="${KB_PLUGIN_DIR:-$HOME/dev/kb}/lib/lint.ts"
-[ -f "$KB_LINT" ] || {
-  echo "pre-commit: kb linter not found, skipping ($KB_LINT)" >&2
+# Where the plugin lives comes from the environment. git runs this hook, so no agent has
+# substituted ${CLAUDE_PLUGIN_ROOT}, and any path we defaulted to would be somebody else's
+# layout — so we ask rather than guess.
+KB_LINT="$KB_PLUGIN_DIR/lib/lint.ts"
+[ -n "$KB_PLUGIN_DIR" ] && [ -f "$KB_LINT" ] || {
+  echo "pre-commit: kb linter not found; set KB_PLUGIN_DIR to the kb plugin directory" >&2
   exit 0
 }
 

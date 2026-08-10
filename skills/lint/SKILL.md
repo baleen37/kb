@@ -33,6 +33,9 @@ A `pre-commit` hook can run this automatically. Hooks are not cloned, so enable 
 per clone: `git config core.hooksPath hooks`. It checks the **working tree**, not the
 staged snapshot, and warns when the two differ.
 
+The hook reads `KB_PLUGIN_DIR` to find the plugin. When it is unset, or the linter is not
+there, the hook skips rather than blocking the commit.
+
 ## Editorial review
 
 When a human asks to lint, read and judge what machines cannot. **Report first, do not fix.**

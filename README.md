@@ -60,8 +60,11 @@ command = "sh"
 args = ["-c", "cd /path/to/vault && exec /path/to/kb/lib/mcp/start.sh"]
 ```
 
-Codex has no `${CLAUDE_PLUGIN_ROOT}`, so spell out where the plugin lives. Codex config
-is global, so name the server per vault if you use more than one.
+Codex does not substitute `${CLAUDE_PLUGIN_ROOT}` in its own MCP config, so spell out
+where the plugin lives. Codex config is global, so name the server per vault if you use
+more than one.
+
+The optional `pre-commit` hook needs the same path in `KB_PLUGIN_DIR`.
 
 Then add one line to that repo's `CLAUDE.md` / `AGENTS.md` telling agents to search the
 vault before investigating from scratch. The MCP server supplies the tool; the line
