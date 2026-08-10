@@ -6,6 +6,7 @@
  * cannot reach another vault's index because there is no path by which to do so.
  */
 
+import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createStore, type QMDStore } from "@tobilu/qmd";
@@ -46,14 +47,40 @@ export type Prepared = {
   close: () => Promise<void>;
 };
 
+/** Runs embed.ts against a vault and resolves when it exits. */
+function embedElsewhere(root: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [join(import.meta.dir, "embed.ts"), root],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+
+    let stderr = "";
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`embed exited ${code}${stderr ? `: ${stderr.trim()}` : ""}`));
+    });
+  });
+}
+
 /**
  * Open a vault's store and bring it to a searchable state.
  *
- * Recovery runs in the background: embedding takes seconds, and blocking the MCP
- * handshake that long risks a client timeout. Tool handlers await `ready`.
+ * Indexing happens here — it is milliseconds. Embedding happens in a child
+ * process, because qmd redirects `process.stdout.write` to stderr while llama
+ * initializes (llm.ts, withNativeStdoutRedirectedToStderr). The MCP server
+ * speaks JSON-RPC over that same stdout, so embedding in-process silently
+ * diverts responses and the client hangs. See lib/mcp/embed.ts.
  *
- * A failure here does not kill the server. Lex search still works when only
- * embedding failed, and a partly working server beats a dead one.
+ * Recovery runs in the background either way; tool handlers await `ready`.
+ * A failure does not kill the server — lex search still works without vectors,
+ * and a partly working server beats a dead one.
  */
 export async function prepareStore(from?: string): Promise<Prepared> {
   const { store, vault } = await openStore(from);
@@ -62,7 +89,7 @@ export async function prepareStore(from?: string): Promise<Prepared> {
   const ready = (async () => {
     try {
       await store.update();
-      if ((await store.getStatus()).needsEmbedding > 0) await store.embed();
+      if ((await store.getStatus()).needsEmbedding > 0) await embedElsewhere(vault.root);
       recovery.state = "done";
     } catch (error) {
       recovery.state = "failed";

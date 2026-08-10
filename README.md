@@ -28,23 +28,13 @@ sources: raw
 collection: wiki
 ```
 
-Register the search index once per vault, **in this order**:
+The server reads `.kb.yaml`, keeps its index in the vault's own `.qmd/`, and
+indexes on first run. No `qmd init`, no collection registration — it passes the
+collection to qmd directly, so the global config is never consulted and one
+vault cannot see another's collections.
 
-```bash
-qmd init                                   # create the vault-local .qmd/ index
-qmd collection add ./wiki --name wiki
-qmd update && qmd embed
-```
-
-`qmd init` first is what makes the isolation real. qmd's config is global by default
-(`~/.config/qmd/index.yml`, index in `~/.cache/qmd/`), and a vault-local `.qmd/` takes
-precedence only once it exists. Register a collection before running `qmd init` and it
-lands in the global config, where this vault will also see every other vault's
-collections. Nothing errors — `qmd collection list` from inside the vault is the only
-way to notice, and it should show exactly the collections this vault declares.
-
-Always pass a path and `--name`. Bare `qmd collection add` registers the current
-directory with no confirmation.
+The qmd CLI still works inside a vault for ad-hoc searching, but it follows the
+global config rules described in its own docs.
 
 Point a working repo at its vault with an MCP server. In Claude Code, `.mcp.json` at the
 repo root:
@@ -52,23 +42,26 @@ repo root:
 ```json
 {
   "mcpServers": {
-    "kb": { "command": "qmd", "args": ["mcp"], "cwd": "/path/to/vault" }
+    "kb": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/lib/mcp/start.sh",
+      "cwd": "/path/to/vault"
+    }
   }
 }
 ```
 
 Codex does not read a repo's `.mcp.json`, and its MCP config has no `cwd` field. Since
-`qmd mcp` takes the vault from the working directory, wrap the command in a shell that
+the server takes the vault from the working directory, wrap the command in a shell that
 changes into it — in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.kb]
 command = "sh"
-args = ["-c", "cd /path/to/vault && exec qmd mcp"]
+args = ["-c", "cd /path/to/vault && exec /path/to/kb/lib/mcp/start.sh"]
 ```
 
-or `codex mcp add kb -- sh -c "cd /path/to/vault && exec qmd mcp"`. Codex config is
-global, so name the server per vault if you use more than one.
+Codex has no `${CLAUDE_PLUGIN_ROOT}`, so spell out where the plugin lives. Codex config
+is global, so name the server per vault if you use more than one.
 
 Then add one line to that repo's `CLAUDE.md` / `AGENTS.md` telling agents to search the
 vault before investigating from scratch. The MCP server supplies the tool; the line
@@ -92,6 +85,7 @@ unknown name fails loudly.
 ```text
 SCHEMA.md          # rules every vault follows
 skills/            # ingest, query, lint
+lib/mcp/           # the MCP server — start.sh launches it
 lib/lint.ts        # format checker; resolves the vault from cwd
 lib/vault.ts       # .kb.yaml resolution
 hooks/pre-commit   # optional, per vault
