@@ -23,7 +23,12 @@ jobs:
         with:
           node-version: lts/*
 
+      # semantic-release resolves its plugins from the project, so they must be
+      # installed here — npx alone fetches only the core package.
+      - name: Install release tooling
+        run: npm install --no-audit --no-fund
+
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx --yes semantic-release
+        run: npx semantic-release
