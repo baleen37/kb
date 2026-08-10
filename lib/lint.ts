@@ -1,20 +1,32 @@
 #!/usr/bin/env bun
 /**
- * vault 형식 린터.
+ * Vault format linter.
  *
- *   bun lib/lint.ts            # cwd가 속한 vault를 검사
+ *   bun lib/lint.ts            # lints the vault containing cwd
  *
- * 검사하는 것은 명백히 틀린 것뿐이다 — 페이지 이름, frontmatter, 깨진 링크,
- * Markdown 형식. 모순·낡은 주장·빠진 개념 같은 판단은 사람과 에이전트의 몫이다.
+ * Checks only what is mechanically wrong — page names, frontmatter, broken links,
+ * Markdown structure. Contradictions, stale claims, and missing concepts are
+ * judgment calls left to humans and agents.
  *
- * 종료 코드: error 있으면 1, 아니면 0
+ * Exit code: 1 on error, 2 when no vault was found, 0 otherwise.
  */
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname, resolve, relative } from "node:path";
-import { loadVault } from "./vault.ts";
+import { loadVault, VaultNotFound } from "./vault.ts";
 
-const vault = loadVault();
+let vault;
+try {
+  vault = loadVault();
+} catch (error) {
+  // A stack trace helps nobody here. Show what to create instead.
+  if (error instanceof VaultNotFound) {
+    console.error(error.message);
+    process.exit(2);
+  }
+  throw error;
+}
+
 const ROOT = vault.root;
 const WIKI = vault.pages;
 const MARKDOWNLINT_CONFIG = join(import.meta.dir, "..", "markdownlint.yaml");
@@ -27,7 +39,7 @@ const findings: Finding[] = [];
 const add = (level: Finding["level"], file: string, msg: string, line?: number) =>
   findings.push({ level, file: relative(ROOT, file), line, msg });
 
-/** 코드블록과 인라인 코드를 뺀 마크다운 링크 */
+/** Markdown links, excluding those inside code blocks and inline code */
 function links(text: string): { target: string; line: number }[] {
   const out: { target: string; line: number }[] = [];
   let fence = false;
@@ -47,9 +59,9 @@ function checkLinks(file: string, text: string) {
     const bare = target.split("#")[0];
     if (!bare) continue;
     if (!bare.endsWith(".md")) {
-      add("error", file, `.md 확장자 없는 내부 링크 → ${target}`, line);
+      add("error", file, `internal link without .md → ${target}`, line);
     } else if (!existsSync(resolve(dirname(file), bare))) {
-      add("error", file, `깨진 링크 → ${target}`, line);
+      add("error", file, `broken link → ${target}`, line);
     }
   }
 }
@@ -57,24 +69,25 @@ function checkLinks(file: string, text: string) {
 function checkPageName(file: string) {
   const name = relative(WIKI, file);
 
-  // 날짜 접두사는 사건·조사 페이지의 흔적이다. 페이지는 개념 단위이고 현재를 기술한다.
+  // A date prefix is the fingerprint of an incident or investigation page.
+  // Pages are concepts and describe the present.
   if (/^\d{4}-\d{2}-\d{2}-/.test(name)) {
-    add("error", file, `날짜 접두사 파일명 → ${name} (페이지는 개념 단위다. 개념 페이지로 합칠 것)`);
+    add("error", file, `date-prefixed filename → ${name} (a page is a concept; merge it into one)`);
     return;
   }
 
-  if (!PAGE_NAME.test(name)) add("error", file, `파일명 형식 오류 → ${name} (slug.md)`);
+  if (!PAGE_NAME.test(name)) add("error", file, `malformed filename → ${name} (expected slug.md)`);
 }
 
 /**
- * 페이지별 마지막 커밋 날짜. 워킹트리가 HEAD와 다른 파일은 제외한다 —
- * 편집 중인 페이지는 커밋일과 어긋나는 게 정상이다.
+ * Last commit date per page. Pages with uncommitted changes are excluded —
+ * a page being edited is expected to differ from its last commit.
  */
 function lastCommitDates(): Map<string, string> {
   const dates = new Map<string, string>();
   const pagesDir = relative(ROOT, WIKI);
 
-  // quotepath=false가 없으면 git이 한글 경로를 8진 이스케이프로 내보내 경로가 영영 안 맞는다.
+  // Without quotepath=false, git octal-escapes non-ASCII paths and they never match.
   const run = (args: string[]) => {
     const proc = Bun.spawnSync(["git", "-c", "core.quotepath=false", ...args], {
       cwd: ROOT,
@@ -117,7 +130,7 @@ function markdownFiles(dir: string): string[] {
 
 function checkMarkdownFormat() {
   if (!existsSync(MARKDOWNLINT_CONFIG)) {
-    add("error", MARKDOWNLINT_CONFIG, "Markdown 형식 설정 없음");
+    add("error", MARKDOWNLINT_CONFIG, "missing Markdown format config");
     return;
   }
 
@@ -131,21 +144,21 @@ function checkMarkdownFormat() {
     const output = `${decoder.decode(proc.stdout)}${decoder.decode(proc.stderr)}`;
     if (proc.exitCode !== 0) {
       for (const line of output.split(/\r?\n/).filter(Boolean))
-        add("error", ROOT, `Markdown 형식: ${line}`);
+        add("error", ROOT, `Markdown format: ${line}`);
     }
   } catch (error) {
-    add("error", ROOT, `Markdown 형식 검사 실행 실패: ${String(error)}`);
+    add("error", ROOT, `Markdown format check failed to run: ${String(error)}`);
   }
 }
 
-// ── 페이지 ────────────────────────────────────────────────────────────────
+// ── Pages ─────────────────────────────────────────────────────────────────
 const pages = existsSync(WIKI)
   ? readdirSync(WIKI, { recursive: true, encoding: "utf8" })
       .filter((f) => f.endsWith(".md"))
       .map((f) => join(WIKI, f))
   : [];
 
-if (!existsSync(WIKI)) add("error", WIKI, `${relative(ROOT, WIKI)}/ 없음`);
+if (!existsSync(WIKI)) add("error", WIKI, `${relative(ROOT, WIKI)}/ not found`);
 
 const commitDates = lastCommitDates();
 
@@ -155,20 +168,20 @@ for (const page of pages) {
   const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
 
   if (!fm) {
-    add("error", page, "frontmatter 없음");
+    add("error", page, "missing frontmatter");
   } else {
     const updated = fm[1].match(/^updated:\s*(\S+)/m);
-    if (!updated) add("error", page, "frontmatter에 updated 없음");
+    if (!updated) add("error", page, "frontmatter missing updated");
     else if (!/^\d{4}-\d{2}-\d{2}$/.test(updated[1]))
-      add("error", page, `updated '${updated[1]}' 형식 오류 (YYYY-MM-DD)`);
+      add("error", page, `malformed updated '${updated[1]}' (expected YYYY-MM-DD)`);
     else {
-      // 내용은 고쳤는데 날짜를 안 고친 자리. 신선도 신호가 조용히 틀어진다.
+      // Content moved but the date did not. The freshness signal is silently wrong.
       const committed = commitDates.get(relative(ROOT, page));
       if (committed && updated[1] < committed)
-        add("warn", page, `updated ${updated[1]} < 마지막 커밋 ${committed} (갱신 누락)`);
+        add("warn", page, `updated ${updated[1]} < last commit ${committed} (not bumped)`);
     }
 
-    if (!/^tags:/m.test(fm[1])) add("warn", page, "frontmatter에 tags 없음");
+    if (!/^tags:/m.test(fm[1])) add("warn", page, "frontmatter missing tags");
   }
 
   checkLinks(page, text);
@@ -176,7 +189,7 @@ for (const page of pages) {
 
 checkMarkdownFormat();
 
-// ── 출력 ──────────────────────────────────────────────────────────────────
+// ── Output ────────────────────────────────────────────────────────────────
 const errors = findings.filter((f) => f.level === "error");
 const warns = findings.filter((f) => f.level === "warn");
 
@@ -185,5 +198,5 @@ for (const f of [...errors, ...warns]) {
   console.log(`      ${f.msg}`);
 }
 
-console.log(findings.length === 0 ? `✓ 통과 (${pages.length}장)` : `\nerror ${errors.length} · warn ${warns.length}`);
+console.log(findings.length === 0 ? `✓ ok (${pages.length} pages)` : `\nerror ${errors.length} · warn ${warns.length}`);
 process.exit(errors.length > 0 ? 1 : 0);

@@ -1,25 +1,37 @@
 /**
- * vault 위치와 설정을 푼다.
+ * Resolves a vault's location and configuration.
  *
- * vault는 `.kb.yaml`을 루트에 둔 디렉터리다. cwd에서 위로 올라가며 찾는다 —
- * git 훅은 항상 레포 루트에서 돌고, 사람은 vault 안 어디서든 명령을 친다.
+ * A vault is a directory with `.kb.yaml` at its root. We search upward from cwd —
+ * git hooks always run at the repo root, and people run commands from anywhere
+ * inside the vault.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 export type VaultConfig = {
-  /** vault 루트 절대경로 */
+  /** Absolute path to the vault root */
   root: string;
-  /** 위키 페이지 디렉터리 (기본 wiki) */
+  /** Wiki page directory (default: wiki) */
   pages: string;
-  /** 원본 스냅샷 디렉터리 (기본 raw) */
+  /** Immutable source snapshot directory (default: raw) */
   sources: string;
-  /** qmd collection 이름. vault 안에서만 유효한 로컬 이름이다 */
+  /** qmd collection name. Local to this vault; vaults have separate indexes */
   collection: string;
 };
 
 const DEFAULTS = { pages: "wiki", sources: "raw", collection: "wiki" };
+
+export class VaultNotFound extends Error {
+  constructor(from: string) {
+    super(
+      `No vault found (searched upward from ${from}).\n` +
+        "A vault root needs .kb.yaml. For example:\n\n" +
+        "  pages: wiki\n  sources: raw\n  collection: wiki",
+    );
+    this.name = "VaultNotFound";
+  }
+}
 
 export function findVaultRoot(from = process.cwd()): string | null {
   let dir = resolve(from);
@@ -32,8 +44,8 @@ export function findVaultRoot(from = process.cwd()): string | null {
 }
 
 /**
- * `.kb.yaml`은 평평한 `key: value`만 쓴다. 스키마가 이 네 줄을 넘어가면
- * YAML 파서를 들이는 대신 그 필요가 진짜인지 먼저 의심한다.
+ * `.kb.yaml` holds flat `key: value` pairs only. If the schema outgrows these few
+ * lines, question whether the need is real before pulling in a YAML parser.
  */
 function parse(text: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -46,12 +58,7 @@ function parse(text: string): Record<string, string> {
 
 export function loadVault(from?: string): VaultConfig {
   const root = findVaultRoot(from);
-  if (!root) {
-    throw new Error(
-      "vault를 찾지 못했다. vault 루트에 .kb.yaml이 있어야 한다.\n" +
-        "  새로 만들려면: kb init",
-    );
-  }
+  if (!root) throw new VaultNotFound(resolve(from ?? process.cwd()));
 
   const cfg = { ...DEFAULTS, ...parse(readFileSync(join(root, ".kb.yaml"), "utf8")) };
   return {
