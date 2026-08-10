@@ -34,3 +34,50 @@ export async function openStore(from?: string): Promise<{ store: QMDStore; vault
   mkdirSync(dirname(opts.dbPath), { recursive: true });
   return { store: await createStore(opts), vault };
 }
+
+export type Recovery = { state: "pending" | "done" | "failed"; error?: string };
+
+export type Prepared = {
+  store: QMDStore;
+  vault: VaultConfig;
+  /** Resolves when recovery settles. Never rejects — check `recovery` instead. */
+  ready: Promise<void>;
+  recovery: Recovery;
+  close: () => Promise<void>;
+};
+
+/**
+ * Open a vault's store and bring it to a searchable state.
+ *
+ * Recovery runs in the background: embedding takes seconds, and blocking the MCP
+ * handshake that long risks a client timeout. Tool handlers await `ready`.
+ *
+ * A failure here does not kill the server. Lex search still works when only
+ * embedding failed, and a partly working server beats a dead one.
+ */
+export async function prepareStore(from?: string): Promise<Prepared> {
+  const { store, vault } = await openStore(from);
+  const recovery: Recovery = { state: "pending" };
+
+  const ready = (async () => {
+    try {
+      await store.update();
+      if ((await store.getStatus()).needsEmbedding > 0) await store.embed();
+      recovery.state = "done";
+    } catch (error) {
+      recovery.state = "failed";
+      recovery.error = error instanceof Error ? error.message : String(error);
+    }
+  })();
+
+  return {
+    store,
+    vault,
+    ready,
+    recovery,
+    close: async () => {
+      await ready;
+      await store.close();
+    },
+  };
+}

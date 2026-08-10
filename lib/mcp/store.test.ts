@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { join } from "node:path";
 import { makeVault } from "./fixture.ts";
 import { loadVault } from "../vault.ts";
-import { storeOptionsFor, openStore } from "./store.ts";
+import { storeOptionsFor, openStore, prepareStore } from "./store.ts";
 
 test("storeOptionsFor puts the index inside the vault", () => {
   const v = makeVault();
@@ -84,3 +84,56 @@ test("a polluted global config does not leak into the vault", async () => {
     v.cleanup();
   }
 });
+
+test("recovery indexes an empty vault so lex search works", async () => {
+  const v = makeVault({ docs: { "a.md": "# Alpha\n\nthe quokka is a marsupial" } });
+  try {
+    const p = await prepareStore(v.root);
+    expect(p.recovery.state).toBe("pending");
+
+    await p.ready;
+    expect(p.recovery.state).toBe("done");
+
+    const hits = await p.store.searchLex("quokka");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0].displayPath).toContain("a.md");
+
+    await p.close();
+  } finally {
+    v.cleanup();
+  }
+}, 60_000);
+
+test("recovery embeds so vector search is available", async () => {
+  const v = makeVault({ docs: { "b.md": "# Beta\n\npostgres connection pooling" } });
+  try {
+    const p = await prepareStore(v.root);
+    await p.ready;
+
+    const status = await p.store.getStatus();
+    expect(status.totalDocuments).toBe(1);
+    expect(status.needsEmbedding).toBe(0);
+    expect(status.hasVectorIndex).toBe(true);
+
+    await p.close();
+  } finally {
+    v.cleanup();
+  }
+}, 120_000);
+
+test("a failed recovery leaves the server usable", async () => {
+  const v = makeVault({ docs: { "c.md": "# Gamma\n\nnumbat" } });
+  try {
+    const p = await prepareStore(v.root);
+    // Break embedding only. Indexing already happened, so lex must still work.
+    p.store.embed = () => Promise.reject(new Error("no model"));
+    await p.ready;
+
+    expect(p.recovery.state).toBe("failed");
+    expect(p.recovery.error).toContain("no model");
+
+    await p.close();
+  } finally {
+    v.cleanup();
+  }
+}, 60_000);
