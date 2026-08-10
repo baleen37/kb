@@ -15,6 +15,7 @@
 - **검색 옵션은 qmd 기본값 그대로.** `rerank` 등에 손대지 않는다. 호출자가 안 주면 SDK에 안 넘긴다.
 - **`collections`는 복수형 배열로 유지.** 스키마가 계약이므로 이름을 바꾸지 않는다.
 - **`loadVault()`가 돌려주는 `pages`/`sources`는 이미 절대경로다** (`join(root, cfg.pages)`가 내부에서 끝남). 다시 `join(root, ...)` 하지 말 것.
+- **`dbPath`의 부모 디렉터리는 우리가 만든다.** qmd는 SQLite 파일을 직접 열 뿐 `.qmd/`를 생성하지 않는다 (`dist/db.js:58`이 `new _Database(path)`를 그대로 호출). 없으면 `SQLITE_CANTOPEN`으로 죽는다. 디스크를 건드리는 쪽은 `openStore`이고, `storeOptionsFor`는 경로만 계산하는 순수 함수로 남긴다.
 - 의존성 버전은 qmd가 쓰는 것과 맞춘다: `@modelcontextprotocol/sdk` 1.29.0, `zod` 4.2.1.
 - 파일은 `bun`으로 실행한다. 새 런타임이나 빌드 단계를 도입하지 않는다.
 
@@ -245,7 +246,8 @@ Create `lib/mcp/store.ts`:
  * cannot reach another vault's index because there is no path by which to do so.
  */
 
-import { join } from "node:path";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createStore, type QMDStore } from "@tobilu/qmd";
 import { loadVault, type VaultConfig } from "../vault.ts";
 
@@ -267,7 +269,10 @@ export function storeOptionsFor(vault: VaultConfig): StoreOptions {
 
 export async function openStore(from?: string): Promise<{ store: QMDStore; vault: VaultConfig }> {
   const vault = loadVault(from);
-  return { store: await createStore(storeOptionsFor(vault)), vault };
+  const options = storeOptionsFor(vault);
+  // qmd opens the SQLite file directly and never creates its parent.
+  mkdirSync(dirname(options.dbPath), { recursive: true });
+  return { store: await createStore(options), vault };
 }
 ```
 
