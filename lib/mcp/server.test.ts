@@ -7,27 +7,17 @@ test("instructions never quote figures from the index", () => {
   // They are built before recovery indexes anything, so every count would read
   // zero: a full vault would look empty and an embedding warning would stay
   // silent on the cold start where it matters. `status` reports live figures.
-  const text = buildInstructions("wiki");
+  const text = buildInstructions();
   expect(text).not.toMatch(/\d+ markdown documents/);
   expect(text).not.toMatch(/\d+ documents need embedding/);
   expect(text).toContain("searchable vault");
 });
 
 test("instructions point at status for embedding readiness", () => {
-  const text = buildInstructions("wiki");
+  const text = buildInstructions();
   expect(text).toContain("`status`");
   expect(text).toMatch(/vec/);
   expect(text).toMatch(/lex/);
-});
-
-test("instructions say collections, never the singular trap", () => {
-  const text = buildInstructions("wiki");
-  expect(text).toContain("`collections`");
-  expect(text).not.toMatch(/`collection`[^s]/);
-});
-
-test("instructions name the vault's own collection", () => {
-  expect(buildInstructions("kb-notes")).toContain("Collection: kb-notes");
 });
 
 test("a real server carries honest instructions on a cold start", async () => {
@@ -45,7 +35,6 @@ test("a real server carries honest instructions on a cold start", async () => {
 
     expect(instructions).toBeDefined();
     expect(instructions).not.toMatch(/\b0 (markdown documents|documents)/);
-    expect(instructions).toContain("`collections`");
 
     await p.close();
   } finally {

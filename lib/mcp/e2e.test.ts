@@ -21,7 +21,7 @@ test("the server exposes exactly the four qmd tools", async () => {
     });
 
     const { tools } = await client.listTools(undefined, { timeout: REQUEST_TIMEOUT });
-    expect(tools.map((t) => t.name).sort()).toEqual(["get", "multi_get", "query", "status"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["get", "query", "status"]);
 
     await client.close();
   } finally {

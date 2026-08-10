@@ -4,8 +4,8 @@
  *
  *   bun lib/mcp/server.ts     # serves the vault containing cwd
  *
- * Same four tools as `qmd mcp`, built on the qmd SDK so the vault's index is
- * the only one reachable.
+ * Three tools — query, get, status — built on the qmd SDK so the vault's index
+ * is the only one reachable.
  */
 
 import { createWriteStream } from "node:fs";
@@ -17,26 +17,18 @@ import {
   querySchema,
   statusSchema,
   getSchema,
-  multiGetSchema,
   handleQuery,
   handleStatus,
   handleGet,
-  handleMultiGet,
 } from "./tools.ts";
 
-/**
- * qmd's own instructions tell callers to scope with a singular `collection`
- * while the schema takes plural `collections`. We own this text, so we fix it.
- */
-export function buildInstructions(collection: string): string {
+export function buildInstructions(): string {
   // No figures from `status` here. Instructions are built at startup, before
   // recovery has indexed anything, so every count reads zero — a full vault
   // would look empty, and the "documents need embedding" warning would stay
   // silent on exactly the cold start where it matters. `status` reports live.
   const lines = [
-    `A searchable vault of markdown documents.`,
-    "",
-    `Collection: ${collection}. Filter with the \`collections\` parameter — plural, an array.`,
+    `A searchable vault of markdown documents. Every search covers the whole vault.`,
     "",
     "Call `status` before relying on `vec` or `hyde`: until embedding finishes",
     "they return little or nothing, while `lex` works as soon as indexing does.",
@@ -49,8 +41,7 @@ export function buildInstructions(collection: string): string {
     "  - vec — semantic vector search (meaning-based)",
     "  - hyde — hypothetical answer passage",
     "",
-    "Retrieval: `get` for one document (path or #docid, line ranges supported),",
-    "`multi_get` for a glob or comma-separated list.",
+    "Retrieval: `get` for one document (path or #docid, line ranges supported).",
   );
 
   return lines.join("\n");
@@ -59,7 +50,7 @@ export function buildInstructions(collection: string): string {
 export function createMcpServer(p: Prepared): McpServer {
   const server = new McpServer(
     { name: "kb", version: "1.0.0" },
-    { instructions: buildInstructions(p.vault.collection) },
+    { instructions: buildInstructions() },
   );
 
   const readOnly = { readOnlyHint: true, openWorldHint: false };
@@ -87,18 +78,6 @@ export function createMcpServer(p: Prepared): McpServer {
       annotations: readOnly,
     },
     (args) => handleGet(p, args),
-  );
-
-  server.registerTool(
-    "multi_get",
-    {
-      title: "Multi-Get Documents",
-      description:
-        "Retrieve multiple documents by glob pattern or comma-separated list. Skips oversized files.",
-      inputSchema: multiGetSchema,
-      annotations: readOnly,
-    },
-    (args) => handleMultiGet(p, args),
   );
 
   server.registerTool(

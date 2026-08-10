@@ -1,5 +1,5 @@
 /**
- * The four tools, mirroring qmd mcp's surface.
+ * The three tools: query, get, status.
  *
  * Handlers know about the store and about MCP's response shape, but nothing
  * about transports. Search options are forwarded only when the caller supplied
@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { addLineNumbers, DEFAULT_MULTI_GET_MAX_BYTES } from "@tobilu/qmd";
+import { addLineNumbers } from "@tobilu/qmd";
 import type { HybridQueryResult, IndexStatus } from "@tobilu/qmd";
 import type { Prepared } from "./store.ts";
 
@@ -25,7 +25,6 @@ export const querySchema = {
   limit: z.number().optional().describe("Max results (default: 10)"),
   minScore: z.number().optional().describe("Min relevance 0-1 (default: 0)"),
   candidateLimit: z.number().optional().describe("Maximum candidates to rerank (default: 40)"),
-  collections: z.array(z.string()).optional().describe("Filter to collections (OR match)"),
   intent: z.string().optional().describe("Background context to disambiguate the query."),
   rerank: z.boolean().optional().describe("Rerank results using LLM (default: true)"),
 };
@@ -73,20 +72,24 @@ export async function handleQuery(
     limit?: number;
     minScore?: number;
     candidateLimit?: number;
-    collections?: string[];
     intent?: string;
     rerank?: boolean;
   },
 ) {
   await p.ready;
 
+  // A vault holds exactly one collection (see storeOptionsFor), so we name it
+  // here rather than exposing a filter. Letting callers pass one gave them two
+  // outcomes only: the right name, which changed nothing, or any other string,
+  // which silently returned zero results.
+  //
   // Forward only what the caller set; omitted keys must fall through to qmd's defaults.
   const results = await p.store.search({
     queries: args.searches,
+    collections: [p.vault.collection],
     ...(args.limit !== undefined && { limit: args.limit }),
     ...(args.minScore !== undefined && { minScore: args.minScore }),
     ...(args.candidateLimit !== undefined && { candidateLimit: args.candidateLimit }),
-    ...(args.collections !== undefined && { collections: args.collections }),
     ...(args.intent !== undefined && { intent: args.intent }),
     ...(args.rerank !== undefined && { rerank: args.rerank }),
   });
@@ -129,28 +132,6 @@ export const getSchema = {
   lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
 };
 
-export const multiGetSchema = {
-  pattern: z.string().describe("Glob pattern or comma-separated list of file paths"),
-  maxLines: z.number().optional().describe("Maximum lines per file"),
-  maxBytes: z.number().optional().describe("Skip files larger than this (default: 10240)"),
-  lineNumbers: z.boolean().optional().describe("Add line numbers to output (default: true)"),
-};
-
-/**
- * multiGet has no line limit of its own, so honor maxLines here — and say so
- * when content was dropped. Silent truncation reads as a document that simply
- * ends, giving the caller no reason to re-fetch it with `get`.
- */
-function clip(body: string, maxLines?: number): string {
-  if (maxLines === undefined) return body;
-
-  const lines = body.split("\n");
-  if (lines.length <= maxLines) return body;
-
-  const dropped = lines.length - maxLines;
-  return `${lines.slice(0, maxLines).join("\n")}\n\n[... truncated ${dropped} more lines]`;
-}
-
 export async function handleGet(
   p: Prepared,
   args: { file: string; fromLine?: number; maxLines?: number; lineNumbers?: boolean },
@@ -180,31 +161,5 @@ export async function handleGet(
   return {
     content: [{ type: "text" as const, text: `${doc.displayPath} (#${doc.docid})\n${numbered}` }],
     structuredContent: { ...doc, body },
-  };
-}
-
-export async function handleMultiGet(
-  p: Prepared,
-  args: { pattern: string; maxLines?: number; maxBytes?: number; lineNumbers?: boolean },
-) {
-  await p.ready;
-
-  const { docs, errors } = await p.store.multiGet(args.pattern, {
-    includeBody: true,
-    maxBytes: args.maxBytes ?? DEFAULT_MULTI_GET_MAX_BYTES,
-  });
-
-  const chunks = docs.map((entry) => {
-    if (entry.skipped) return `${entry.doc.displayPath}\n[skipped: ${entry.skipReason}]`;
-    const body = clip(entry.doc.body ?? "", args.maxLines);
-    const shown = args.lineNumbers === false ? body : addLineNumbers(body, 1);
-    return `${entry.doc.displayPath} (#${entry.doc.docid})\n${shown}`;
-  });
-
-  if (errors.length) chunks.push(`Errors: ${errors.join(", ")}`);
-
-  return {
-    content: [{ type: "text" as const, text: chunks.join("\n\n") || "No documents matched." }],
-    structuredContent: { docs, errors },
   };
 }

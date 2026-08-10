@@ -52,7 +52,11 @@ export type Prepared = {
  * embedding a large vault takes minutes, and shutdown should not wait for it.
  */
 function embedElsewhere(root: string): { done: Promise<void>; cancel: () => void } {
-  const child = spawn(process.execPath, [join(import.meta.dir, "embed.ts"), root], {
+  // Tests that do not assert on vectors point this at a stub, because loading
+  // the model costs ~50s per spawn on a CPU-only runner. It stays a spawn of a
+  // real script either way, so the child-process boundary is still exercised.
+  const script = process.env.KB_EMBED_SCRIPT ?? join(import.meta.dir, "embed.ts");
+  const child = spawn(process.execPath, [script, root], {
     stdio: ["ignore", "ignore", "pipe"],
   });
 

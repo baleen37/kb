@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # `npm ci` is what the release job runs, so failing here catches a
+      # package.json/package-lock.json drift before it reaches main.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Runners have no GPU, so every spawn of the real embedder spends ~50s
+      # loading the model on CPU. The tests that actually assert on vectors opt
+      # back into it themselves; the rest get the stub.
+      - name: Run tests
+        run: npm test
+        env:
+          KB_EMBED_SCRIPT: lib/mcp/embed.stub.ts

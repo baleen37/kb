@@ -104,8 +104,12 @@ test("recovery indexes an empty vault so lex search works", async () => {
   }
 }, 60_000);
 
+// The only test that asserts a vector index exists, so it is the only one that
+// must run the real embedder — a stub would make hasVectorIndex meaningless.
 test("recovery embeds so vector search is available", async () => {
   const v = makeVault({ docs: { "b.md": "# Beta\n\npostgres connection pooling" } });
+  const stub = process.env.KB_EMBED_SCRIPT;
+  delete process.env.KB_EMBED_SCRIPT;
   try {
     const p = await prepareStore(v.root);
     await p.ready;
@@ -114,6 +118,25 @@ test("recovery embeds so vector search is available", async () => {
     expect(status.totalDocuments).toBe(1);
     expect(status.needsEmbedding).toBe(0);
     expect(status.hasVectorIndex).toBe(true);
+
+    await p.close();
+  } finally {
+    if (stub !== undefined) process.env.KB_EMBED_SCRIPT = stub;
+    v.cleanup();
+  }
+}, 120_000);
+
+// prepareStore swallows a failed embed by design, so a broken KB_EMBED_SCRIPT
+// would leave every test that ignores vectors still passing — CI would go green
+// having embedded nothing. Only this test would notice, so it exists.
+test.if(!!process.env.KB_EMBED_SCRIPT)("the stub embedder actually embeds", async () => {
+  const v = makeVault({ docs: { "s.md": "# S\n\nstub" } });
+  try {
+    const p = await prepareStore(v.root);
+    await p.ready;
+
+    expect(p.recovery.error).toBeUndefined();
+    expect(p.recovery.state).toBe("done");
 
     await p.close();
   } finally {
@@ -141,8 +164,13 @@ test("a failed embed leaves the server usable", async () => {
   }
 }, 120_000);
 
+// Needs the real embedder too: the evidence is that loading a model left this
+// process alone, and against a stub there is no model to load, so the
+// assertion would hold no matter where the work ran.
 test("the embedder runs outside this process", async () => {
   const v = makeVault({ docs: { "d.md": "# Delta\n\nbilby" } });
+  const stub = process.env.KB_EMBED_SCRIPT;
+  delete process.env.KB_EMBED_SCRIPT;
   try {
     // Recovery must not load a model here — that is what the child process is
     // for. qmd swaps process.stdout.write while llama initializes, so an
@@ -156,6 +184,7 @@ test("the embedder runs outside this process", async () => {
 
     await p.close();
   } finally {
+    if (stub !== undefined) process.env.KB_EMBED_SCRIPT = stub;
     v.cleanup();
   }
 }, 120_000);
