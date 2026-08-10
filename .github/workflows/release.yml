@@ -24,9 +24,10 @@ jobs:
           node-version: lts/*
 
       # semantic-release resolves its plugins from the project, so they must be
-      # installed here — npx alone fetches only the core package.
+      # installed here — npx alone fetches only the core package. `npm ci` pins the
+      # whole toolchain to package-lock.json so a new major cannot break a release.
       - name: Install release tooling
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       # Releases created with GITHUB_TOKEN do not trigger other workflows, so the
       # marketplace is notified from inside this job. `successCmd` in .releaserc.json
